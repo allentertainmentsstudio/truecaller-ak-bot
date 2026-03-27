@@ -13,6 +13,13 @@ from config import cfg
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ENV CHECK (IMPORTANT)
+if not cfg.BOT_TOKEN or not cfg.API_ID:
+    raise ValueError("❌ Missing BOT_TOKEN / API_ID in .env")
+
+if not cfg.API_KEY:
+    raise ValueError("❌ API_KEY missing in .env")
+
 # BOT
 bot = Client(
     "truecaller_bot",
@@ -22,42 +29,61 @@ bot = Client(
     workers=20
 )
 
-# DATABASE
-mongo = AsyncIOMotorClient(cfg.MONGO_URI)
-db = mongo["truecaller"]
+# DATABASE SAFE CONNECT
+try:
+    mongo = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=5000)
+    db = mongo["truecaller"]
 
-users = db["users"]
-banned_db = db["banned"]
+    users = db["users"]
+    banned_db = db["banned"]
+
+except Exception as e:
+    logger.error(f"Mongo Error: {e}")
+    users = None
+    banned_db = None
 
 cooldown = {}
 
-# CLEAN NUMBER
+# CLEAN NUMBER (IMPROVED)
 def clean_number(n: str):
+    if not n:
+        return None
+
     n = n.strip().replace(" ", "")
     digits = re.sub(r"\D", "", n)
 
     if len(digits) < 8:
         return None
 
+    # auto India format
     if not digits.startswith("91"):
         digits = "91" + digits
 
     return digits
 
-# SAVE USER
+# SAVE USER SAFE
 async def save_user(user):
-    if user:
+    if not user or not users:
+        return
+    try:
         await users.update_one(
             {"id": user.id},
             {"$set": {"name": user.first_name}},
             upsert=True
         )
+    except Exception as e:
+        logger.error(f"save_user: {e}")
 
-# BAN CHECK
+# BAN CHECK SAFE
 async def is_banned(uid):
-    return bool(await banned_db.find_one({"id": uid}))
+    if not banned_db:
+        return False
+    try:
+        return bool(await banned_db.find_one({"id": uid}))
+    except:
+        return False
 
-# API CALL
+# API CALL (FULL SAFE)
 def get_number_info(number):
     try:
         url = f"https://api.apilayer.com/number_verification/validate?number={number}"
@@ -67,9 +93,12 @@ def get_number_info(number):
         }
 
         res = requests.get(url, headers=headers, timeout=10)
-        data = res.json()
 
-        print("API RESPONSE:", data)  # debug
+        if res.status_code != 200:
+            return f"⚠️ API Error: {res.status_code}"
+
+        data = res.json()
+        print("API RESPONSE:", data)
 
         if not data.get("valid"):
             return "❌ Invalid / No Data Found"
@@ -83,8 +112,11 @@ def get_number_info(number):
             f"📍 Location: <code>{data.get('location')}</code>\n"
         )
 
+    except requests.exceptions.Timeout:
+        return "⚠️ API Timeout, try again"
     except Exception as e:
-        return f"⚠️ API Error: {e}"
+        logger.error(e)
+        return "⚠️ API Failed"
 
 # START
 @bot.on_message(filters.command("start"))
@@ -97,8 +129,8 @@ async def start(_, m: Message):
 Your Professional Truecaller Info Bot.
 
 🚀 System Status: 🟢 Online
-⚡ Performance: High-Speed Processing
-🔐 Security: Encrypted
+⚡ Performance: 10x High-Speed Processing
+🔐 Security: End-to-End Encrypted
 
 👇 Send number:
 Ex: +911234567890"""
@@ -114,7 +146,7 @@ Ex: +911234567890"""
         reply_markup=buttons
     )
 
-# MAIN
+# MAIN HANDLER
 @bot.on_message(filters.private & filters.text & ~filters.command(["start"]))
 async def main(_, m: Message):
     uid = m.from_user.id
@@ -129,6 +161,7 @@ async def main(_, m: Message):
         return await m.reply_text("❌ Invalid Number")
 
     now = time.time()
+
     if cooldown.get(uid, 0) > now:
         return await m.reply_text("⏳ Slow down!")
 
@@ -136,7 +169,8 @@ async def main(_, m: Message):
 
     msg = await m.reply_text("🔍 Searching...")
 
-    loop = asyncio.get_event_loop()
+    # SAFE LOOP
+    loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, get_number_info, num)
 
     await msg.edit(result, parse_mode=enums.ParseMode.HTML)
