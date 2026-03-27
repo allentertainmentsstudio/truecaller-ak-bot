@@ -1,4 +1,7 @@
 from os import getenv
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Config:
     API_ID = int(getenv("API_ID", 0))
@@ -8,8 +11,6 @@ class Config:
     OWNER_ID = int(getenv("OWNER_ID", 0))
 
     UPI_ID = getenv("UPI_ID", "971916880@ybl")
-
-    # API KEY
-    API_KEY = getenv("API_KEY", "41ecb7c71fe62512fad162c8800fc85e")
+    API_KEY = getenv("API_KEY")
 
 cfg = Config()
