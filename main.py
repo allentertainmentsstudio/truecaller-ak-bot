@@ -4,10 +4,11 @@ import asyncio
 import logging
 import signal
 import sys
+import requests
 from collections import OrderedDict
 
 from pyrogram import Client, filters, enums
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import Message
 from motor.motor_asyncio import AsyncIOMotorClient
 from configs import cfg
 
@@ -17,20 +18,19 @@ logger = logging.getLogger(__name__)
 
 # ───────── BOT ───────── #
 bot = Client(
-    "truecaller_bot",
+    "truecaller_saas_bot",
     api_id=cfg.API_ID,
     api_hash=cfg.API_HASH,
     bot_token=cfg.BOT_TOKEN,
     workers=20
 )
 
-# ───────── DATABASE ───────── #
+# ───────── DB ───────── #
 mongo = AsyncIOMotorClient(cfg.MONGO_URI)
-db = mongo["bot"]
+db = mongo["truecaller"]
 
 users = db["users"]
 logs = db["logs"]
-premium_db = db["premium"]
 banned_db = db["banned"]
 
 # ───────── PERFORMANCE ───────── #
@@ -55,155 +55,86 @@ class LRUCache:
 
 cache = LRUCache()
 
-# ───────── UTIL ───────── #
-def clean_number(n):
+# ───────── CLEAN NUMBER ───────── #
+def clean_number(n: str):
+    if not n:
+        return None
+
+    n = n.strip().replace(" ", "")
+
+    if n.startswith("+"):
+        return n
+
     digits = re.sub(r"\D", "", n)
-    return digits if 8 <= len(digits) <= 15 else None
+    return f"+{digits}" if 8 <= len(digits) <= 15 else None
 
-async def save_user(user):
-    if user:
-        await users.update_one(
-            {"id": user.id},
-            {"$set": {"name": user.first_name}},
-            upsert=True
-        )
-
-async def is_banned(uid):
-    return bool(await banned_db.find_one({"id": uid}))
-
-# ───────── FAKE LOOKUP ───────── #
-async def lookup(num):
-    return (
-        "🌍 <b>RESULT</b>\n\n"
-        f"📞 Number: <code>{num}</code>\n"
-        f"📌 Status: <code>Valid Number</code>\n"
-        f"⚡ Source: <code>Internal System</code>"
-    )
+# ───────── API CALL ───────── #
+async def get_number_info(num):
+    try:
+        url = f"http://apilayer.net/api/validate?access_key={cfg.API_KEY}&number={num}"
+        response = await asyncio.to_thread(requests.get, url)
+        return response.json()
+    except Exception as e:
+        logger.error(e)
+        return None
 
 # ───────── FETCH ───────── #
-async def fetch(num, msg, user):
+async def fetch(num, msg: Message, user):
     async with sem:
-        cached = cache.get(num)
-        if cached:
-            return await msg.edit(cached, parse_mode=enums.ParseMode.HTML)
+        try:
+            cached = cache.get(num)
+            if cached:
+                return await msg.edit(cached)
 
-        text = await lookup(num)
+            data = await get_number_info(num)
 
-        cache.set(num, text)
-        await logs.insert_one({"user": user.id, "num": num})
+            if not data or not data.get("valid"):
+                return await msg.edit("❌ Invalid or No Data Found")
 
-        await msg.edit(text, parse_mode=enums.ParseMode.HTML)
+            text = (
+                "🌍 RESULT\n\n"
+                f"📞 Number: <code>{data.get('international_format')}</code>\n"
+                f"📌 Valid: <code>{data.get('valid')}</code>\n"
+                f"🌍 Country: <code>{data.get('country_name')}</code>\n"
+                f"📡 Carrier: <code>{data.get('carrier')}</code>\n"
+                f"📱 Line Type: <code>{data.get('line_type')}</code>\n"
+                f"⚡ Source: <code>API System</code>"
+            )
+
+            cache.set(num, text)
+            await msg.edit(text, parse_mode=enums.ParseMode.HTML)
+
+        except Exception as e:
+            logger.error(e)
+            await msg.edit("⚠️ Error occurred")
 
 # ───────── START ───────── #
 @bot.on_message(filters.command("start"))
 async def start(_, m: Message):
-    await save_user(m.from_user)
-
-    name = m.from_user.first_name or "User"
-
-    text = (
-        f"👋 Hello {name}\n\n"
-        "🤖 <b>I am Truecaller Info Bot</b>\n"
-        "<i>Your Professional Truecaller Info Bot</i>\n\n"
-        "🚀 <b>System Status:</b> 🟢 Online\n"
-        "⚡ <b>Performance:</b> 10x High-Speed Processing\n"
-        "🔐 <b>Security:</b> End-to-End Encrypted\n"
-        "📊 <b>Uptime:</b> 99.9% Guaranteed\n\n"
-        "👇 <b>Select an Option Below:</b>\n"
-        "👋 Send number in international format\n"
-        "<code>Ex: +911234567890</code>"
-    )
-
-    buttons = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 Stats", callback_data="stats"),
-            InlineKeyboardButton("💎 Premium", callback_data="premium")
-        ],
-        [
-            InlineKeyboardButton("📞 Support", url="https://t.me/Anujedits76"),
-            InlineKeyboardButton("📢 Updates", url="https://t.me/Anujedits76")
-        ]
-    ])
-
     await m.reply_photo(
         photo="https://i.ibb.co/S4jWcS4v/7168219724-29166.jpg",
-        caption=text,
-        reply_markup=buttons
+        caption=f"""
+Hello {m.from_user.first_name} 👋
+
+🤖 I am Truecaller Info Bot
+Your Professional Truecaller Info Bot.
+
+🚀 System Status: 🟢 Online
+⚡ Performance: 10x High-Speed Processing
+🔐 Security: End-to-End Encrypted
+📊 Uptime: 99.9% Guaranteed
+
+👇 Send number like:
++911234567890
+"""
     )
 
-# ───────── CALLBACKS ───────── #
-@bot.on_callback_query()
-async def callbacks(_, query):
-
-    if query.data == "stats":
-        u = await users.count_documents({})
-        l = await logs.count_documents({})
-
-        await query.message.edit_text(
-            f"📊 <b>Bot Stats</b>\n\n👥 Users: {u}\n📞 Requests: {l}",
-            parse_mode=enums.ParseMode.HTML
-        )
-
-    elif query.data == "premium":
-        await query.message.edit_text(
-            "💎 <b>Premium Benefits</b>\n\n"
-            "⚡ Faster speed\n"
-            "🚀 No cooldown\n\n"
-            "Contact admin to buy",
-            parse_mode=enums.ParseMode.HTML
-        )
-
-# ───────── ADMIN ───────── #
-@bot.on_message(filters.command("addpremium") & filters.user(cfg.OWNER_ID))
-async def add_premium(_, m: Message):
-    try:
-        args = m.text.split()
-
-        uid = int(args[1])
-
-        if len(args) == 3:
-            days = int(args[2])
-            expire = time.time() + days * 86400
-        else:
-            expire = 0
-
-        await premium_db.update_one(
-            {"id": uid},
-            {"$set": {"id": uid, "expire": expire}},
-            upsert=True
-        )
-
-        await m.reply_text("✅ Premium Added")
-
-    except:
-        await m.reply_text("Usage: /addpremium user_id days(optional)")
-
-# ───────── BROADCAST ───────── #
-@bot.on_message(filters.command("broadcast") & filters.user(cfg.OWNER_ID))
-async def broadcast(_, m: Message):
-    msg = m.reply_to_message
-    if not msg:
-        return await m.reply_text("Reply to a message")
-
-    total = 0
-
-    async for user in users.find():
-        try:
-            await msg.copy(user["id"])
-            total += 1
-        except:
-            pass
-
-    await m.reply_text(f"✅ Sent to {total} users")
-
 # ───────── MAIN ───────── #
-@bot.on_message(filters.private & filters.text)
+@bot.on_message(filters.private & filters.text & ~filters.command(["start"]))
 async def main(_, m: Message):
     uid = m.from_user.id
 
-    await save_user(m.from_user)
-
-    if await is_banned(uid):
+    if await banned_db.find_one({"id": uid}):
         return await m.reply_text("🚫 You are banned")
 
     num = clean_number(m.text)
@@ -214,7 +145,7 @@ async def main(_, m: Message):
 
     async with cooldown_lock:
         if cooldown.get(uid, 0) > now:
-            return await m.reply_text("⏳ Slow down")
+            return await m.reply_text("⏳ Slow down!")
 
         cooldown[uid] = now + 2
 
@@ -223,8 +154,11 @@ async def main(_, m: Message):
 
 # ───────── SHUTDOWN ───────── #
 async def shutdown():
-    mongo.close()
-    logger.info("Shutdown complete")
+    try:
+        mongo.close()
+    except:
+        pass
+    logger.info("Bot shutdown complete")
 
 def exit_handler(sig, frame):
     loop = asyncio.new_event_loop()
@@ -239,10 +173,10 @@ signal.signal(signal.SIGTERM, exit_handler)
 def safe_run():
     while True:
         try:
-            print("🚀 BOT STARTED")
+            print("🚀 BOT STARTED SUCCESSFULLY")
             bot.run()
         except Exception as e:
-            logger.error(e)
+            logger.error(f"Crash: {e}")
             time.sleep(5)
 
 safe_run()
