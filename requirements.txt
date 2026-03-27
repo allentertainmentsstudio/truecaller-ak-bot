@@ -1,3 +1,6 @@
 pyrogram
 tgcrypto
 motor
+truecallerpy
+requests
+python-dotenv
