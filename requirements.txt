@@ -1,1 +1,5 @@
-pip install motor pymongo pyrogram truecallerpy
+pyrogram
+tgcrypto
+truecallerpy
+motor
+pymongo
