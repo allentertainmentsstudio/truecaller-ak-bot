@@ -3,8 +3,6 @@ truecaller-ak-bot/
 ├── main.py
 ├── configs.py
 ├── requirements.txt
-├── runtime.txt
-├── Procfile
 ├── Dockerfile
 ├── docker-compose.yml
-└── .dockerignore
+└── .env
