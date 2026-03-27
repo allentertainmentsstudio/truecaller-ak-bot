@@ -1,0 +1,1 @@
+pip install motor pymongo pyrogram truecallerpy
