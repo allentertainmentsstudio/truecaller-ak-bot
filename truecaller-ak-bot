@@ -1,8 +1,9 @@
-truecaller-ak-bot/
+truecaller-bot/
 │
 ├── main.py
 ├── config.py
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
-└── .env
+├── .env
+└── README.md
