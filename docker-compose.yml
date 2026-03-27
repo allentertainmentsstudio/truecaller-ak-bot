@@ -3,11 +3,19 @@ version: "3.9"
 services:
   bot:
     build: .
+    container_name: truecaller_bot
     restart: always
-    environment:
-      - API_ID=xxx
-      - API_HASH=xxx
-      - BOT_TOKEN=xxx
-      - MONGO_URI=xxx
-      - API=xxx
-      - OWNER_ID=xxx
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo_db
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:
