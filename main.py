@@ -13,12 +13,12 @@ from config import cfg
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ENV CHECK (IMPORTANT)
+# ENV CHECK
 if not cfg.BOT_TOKEN or not cfg.API_ID:
-    raise ValueError("❌ Missing BOT_TOKEN / API_ID in .env")
+    raise ValueError("❌ Missing BOT_TOKEN / API_ID")
 
 if not cfg.API_KEY:
-    raise ValueError("❌ API_KEY missing in .env")
+    raise ValueError("❌ Missing API_KEY")
 
 # BOT
 bot = Client(
@@ -29,7 +29,7 @@ bot = Client(
     workers=20
 )
 
-# DATABASE SAFE CONNECT
+# DATABASE SAFE
 try:
     mongo = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=5000)
     db = mongo["truecaller"]
@@ -44,7 +44,7 @@ except Exception as e:
 
 cooldown = {}
 
-# CLEAN NUMBER (IMPROVED)
+# CLEAN NUMBER
 def clean_number(n: str):
     if not n:
         return None
@@ -55,13 +55,12 @@ def clean_number(n: str):
     if len(digits) < 8:
         return None
 
-    # auto India format
     if not digits.startswith("91"):
         digits = "91" + digits
 
     return digits
 
-# SAVE USER SAFE
+# SAVE USER
 async def save_user(user):
     if not user or not users:
         return
@@ -74,7 +73,7 @@ async def save_user(user):
     except Exception as e:
         logger.error(f"save_user: {e}")
 
-# BAN CHECK SAFE
+# BAN CHECK
 async def is_banned(uid):
     if not banned_db:
         return False
@@ -83,7 +82,7 @@ async def is_banned(uid):
     except:
         return False
 
-# API CALL (FULL SAFE)
+# API CALL
 def get_number_info(number):
     try:
         url = f"https://api.apilayer.com/number_verification/validate?number={number}"
@@ -113,7 +112,7 @@ def get_number_info(number):
         )
 
     except requests.exceptions.Timeout:
-        return "⚠️ API Timeout, try again"
+        return "⚠️ API Timeout"
     except Exception as e:
         logger.error(e)
         return "⚠️ API Failed"
@@ -126,18 +125,15 @@ async def start(_, m: Message):
     text = f"""👋 Hello {m.from_user.first_name}
 
 🤖 I am Truecaller Info Bot
-Your Professional Truecaller Info Bot.
-
-🚀 System Status: 🟢 Online
-⚡ Performance: 10x High-Speed Processing
-🔐 Security: End-to-End Encrypted
+🚀 Status: 🟢 Online
+⚡ Speed: Fast
+🔐 Secure Bot
 
 👇 Send number:
 Ex: +911234567890"""
 
     buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 Buy Premium", callback_data="premium")],
-        [InlineKeyboardButton("📊 Stats", callback_data="stats")]
+        [InlineKeyboardButton("💎 Premium", callback_data="premium")]
     ])
 
     await m.reply_photo(
@@ -146,7 +142,7 @@ Ex: +911234567890"""
         reply_markup=buttons
     )
 
-# MAIN HANDLER
+# MAIN
 @bot.on_message(filters.private & filters.text & ~filters.command(["start"]))
 async def main(_, m: Message):
     uid = m.from_user.id
@@ -169,7 +165,6 @@ async def main(_, m: Message):
 
     msg = await m.reply_text("🔍 Searching...")
 
-    # SAFE LOOP
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, get_number_info, num)
 
