@@ -4,6 +4,7 @@ truecaller-bot/
 ├── config.py
 ├── requirements.txt
 ├── Dockerfile
+├── render.yaml
 ├── docker-compose.yml
 ├── .env
 └── README.md
