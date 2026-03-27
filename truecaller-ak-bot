@@ -1,7 +1,7 @@
 truecaller-ak-bot/
 │
 ├── main.py
-├── configs.py
+├── config.py
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
