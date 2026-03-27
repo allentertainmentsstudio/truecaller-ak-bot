@@ -3,7 +3,6 @@ version: "3.9"
 services:
   bot:
     build: .
-    container_name: truecaller_bot
     restart: always
     env_file:
       - .env
@@ -11,8 +10,7 @@ services:
       - mongo
 
   mongo:
-    image: mongo:latest
-    container_name: mongo_db
+    image: mongo
     restart: always
     volumes:
       - mongo_data:/data/db
