@@ -1,0 +1,7 @@
+truecaller-ak-bot/
+│
+├── main.py
+├── configs.py
+├── requirements.txt
+├── README.md
+└── .gitignore
