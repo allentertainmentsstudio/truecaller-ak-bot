@@ -17,7 +17,7 @@ bot = Client(
 
 cc = cfg.API
 
-# ───────── DATABASE (OPTIMIZED) ───────── #
+# ───────── DATABASE ───────── #
 mongo = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo["truecaller"]
 
@@ -26,6 +26,9 @@ logs = db["logs"]
 
 # ───────── CACHE ───────── #
 cooldown = {}
+
+# ───────── SEMAPHORE (NEW FIX) ───────── #
+sem = asyncio.Semaphore(10)
 
 # ───────── FLAGS ───────── #
 flags = {
@@ -41,7 +44,7 @@ def get_flag(code):
     return flags.get((code or "").upper(), "🌍")
 
 
-# ───────── CLEAN NUMBER (FAST + SAFE) ───────── #
+# ───────── CLEAN NUMBER ───────── #
 def clean_number(n: str):
     if not n:
         return None
@@ -58,7 +61,7 @@ def clean_number(n: str):
     return digits if 8 <= len(digits) <= 15 else None
 
 
-# ───────── NON-BLOCKING TRUECALLER CALL ───────── #
+# ───────── NON-BLOCKING API CALL ───────── #
 async def search_async(num):
     return await asyncio.to_thread(search_phonenumber, num, None, cc)
 
@@ -78,7 +81,7 @@ async def save_user(user):
     )
 
 
-# ───────── SAVE LOG (SAFE) ───────── #
+# ───────── SAVE LOG ───────── #
 async def save_log(uid, num):
     try:
         await logs.insert_one({
@@ -90,38 +93,40 @@ async def save_log(uid, num):
         pass
 
 
-# ───────── FETCH DATA (PERFORMANCE FIXED) ───────── #
+# ───────── FETCH (WITH SEMAPHORE LIMIT) ───────── #
 async def fetch(num, msg: Message, user):
-    try:
-        data = await search_async(num)
+    async with sem:   # 🔥 concurrency limit applied
 
-        if not data or not data.get("data"):
-            return await msg.edit("❌ No Data Found")
+        try:
+            data = await search_async(num)
 
-        d = data["data"][0]
+            if not data or not data.get("data"):
+                return await msg.edit("❌ No Data Found")
 
-        phone = (d.get("phones") or [{}])[0]
-        addr = (d.get("addresses") or [{}])[0]
+            d = data["data"][0]
 
-        code = phone.get("countryCode", "N/A")
-        flag = get_flag(code)
+            phone = (d.get("phones") or [{}])[0]
+            addr = (d.get("addresses") or [{}])[0]
 
-        text = (
-            "🌍 TRUECALLER RESULT\n\n"
-            f"👤 Name: <code>{d.get('name','N/A')}</code>\n"
-            f"📞 Number: <code>{phone.get('nationalFormat', num)}</code>\n"
-            f"📌 Type: <code>{phone.get('numberType','N/A')}</code>\n"
-            f"🌍 Country: {flag} <code>{code}</code>\n"
-            f"📡 Carrier: <code>{phone.get('carrier','N/A')}</code>\n"
-            f"⏳ Timezone: <code>{addr.get('timeZone','N/A')}</code>\n\n"
-            "⚡ Status: SUCCESS"
-        )
+            code = phone.get("countryCode", "N/A")
+            flag = get_flag(code)
 
-        await save_log(user.id, num)
-        await msg.edit(text, parse_mode=enums.ParseMode.HTML)
+            text = (
+                "🌍 TRUECALLER RESULT\n\n"
+                f"👤 Name: <code>{d.get('name','N/A')}</code>\n"
+                f"📞 Number: <code>{phone.get('nationalFormat', num)}</code>\n"
+                f"📌 Type: <code>{phone.get('numberType','N/A')}</code>\n"
+                f"🌍 Country: {flag} <code>{code}</code>\n"
+                f"📡 Carrier: <code>{phone.get('carrier','N/A')}</code>\n"
+                f"⏳ Timezone: <code>{addr.get('timeZone','N/A')}</code>\n\n"
+                "⚡ Status: SUCCESS"
+            )
 
-    except Exception as e:
-        await msg.edit(f"⚠️ Error\n<code>{str(e)}</code>")
+            await save_log(user.id, num)
+            await msg.edit(text, parse_mode=enums.ParseMode.HTML)
+
+        except Exception as e:
+            await msg.edit(f"⚠️ Error\n<code>{str(e)}</code>")
 
 
 # ───────── START ───────── #
@@ -134,7 +139,7 @@ async def start(_, m: Message):
     )
 
 
-# ───────── MAIN HANDLER (OPTIMIZED) ───────── #
+# ───────── MAIN HANDLER ───────── #
 @bot.on_message(filters.private & filters.text)
 async def main(_, m: Message):
     await save_user(m.from_user)
@@ -142,7 +147,6 @@ async def main(_, m: Message):
     uid = m.from_user.id
     now = time.time()
 
-    # ultra-fast cooldown check
     if cooldown.get(uid, 0) > now:
         return await m.reply_text("⏳ Slow down!")
 
@@ -158,5 +162,5 @@ async def main(_, m: Message):
     await fetch(num, msg, m.from_user)
 
 
-print("🚀 TRUECALLER BOT RUNNING (PRODUCTION READY)")
+print("🚀 TRUECALLER BOT RUNNING (SEMAPHORE + PRO OPTIMIZED)")
 bot.run()
