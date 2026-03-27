@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  bot:
+    build: .
+    restart: always
+    environment:
+      - API_ID=xxx
+      - API_HASH=xxx
+      - BOT_TOKEN=xxx
+      - MONGO_URI=xxx
+      - API=xxx
+      - OWNER_ID=xxx
